@@ -4,7 +4,9 @@
 # set your aws env vars to production
 
 from blessings import Terminal
+import os
 
+os.environ['TERM'] = 'xterm'
 # terminal colors
 TERM = Terminal()
 
