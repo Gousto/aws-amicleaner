@@ -9,7 +9,7 @@ from datetime import datetime
 from amicleaner.cli import App
 from amicleaner.fetch import Fetcher
 from amicleaner.utils import parse_args, Printer
-from amicleaner.resources.models import AMI, AWSEC2Instance
+from amicleaner.resources.models import AMI, AWSEC2Instance, AWSTag
 
 
 @mock_ec2
@@ -117,6 +117,125 @@ def test_deletion_ami_min_days():
     assert len(candidates_tobedeleted2) == 0
 
 
+@mock_ec2
+@mock_autoscaling
+def test_deletion_filtered_name():
+    """ Test deletion methods """
+
+    # creating tests objects
+    first_ami = AMI()
+    first_ami.name = "test-ami-delete-1"
+    first_ami.id = 'ami-28c2b348'
+    first_ami.creation_date = "2017-11-04T01:35:31.000Z"
+
+    second_ami = AMI()
+    second_ami.name = "test-ami-keepme"
+    second_ami.id = 'ami-28c2b349'
+    second_ami.creation_date = "2017-11-04T01:35:31.000Z"
+
+    third_ami = AMI()
+    third_ami.name = "test-ami-delete-2"
+    third_ami.id = 'ami-28c2b350'
+    third_ami.creation_date = "2017-11-04T01:35:31.000Z"
+
+    # constructing dicts
+    amis_dict = dict()
+    amis_dict[first_ami.id] = first_ami
+    amis_dict[second_ami.id] = second_ami
+    amis_dict[third_ami.id] = third_ami
+
+    parser = parse_args(
+        [
+            '--keep-previous', '0',
+            '--mapping-key', 'name',
+            '--mapping-values', 'test-ami-delete']
+    )
+
+    app = App(parser)
+    # testing filter
+    candidates = app.fetch_candidates(amis_dict)
+
+    candidates_tobedeleted = app.prepare_candidates(candidates)
+    assert len(candidates) == 3
+    assert candidates_tobedeleted == [first_ami, third_ami]
+
+    parser = parse_args(
+        [
+            '--keep-previous', '0',
+            '--name', 'test-ami-delete-1',
+        ]
+    )
+
+    app = App(parser)
+    candidates_tobedeleted2 = app.prepare_candidates(candidates)
+    assert len(candidates) == 3
+    assert candidates_tobedeleted2 == [first_ami]
+
+
+@mock_ec2
+@mock_autoscaling
+def test_deletion_filtered_tags():
+    """ Test deletion methods """
+
+    # creating tests objects
+    first_ami = AMI()
+    first_ami.name = "test-ami1"
+    first_ami.id = 'ami-28c2b348'
+    first_ami.creation_date = "2017-11-04T01:35:31.000Z"
+
+    second_ami = AMI()
+    second_ami.name = "test-ami2"
+    second_ami.id = 'ami-28c2b349'
+    second_ami.creation_date = "2017-11-04T01:35:31.000Z"
+    second_ami.tags = [
+        AWSTag.object_with_json(dict(Key="env", Value="prod")),
+        AWSTag.object_with_json(dict(Key="role", Value="nginx")),
+    ]
+
+    third_ami = AMI()
+    third_ami.name = "test-ami3"
+    third_ami.id = 'ami-28c2b350'
+    third_ami.creation_date = "2017-11-04T01:35:31.000Z"
+    third_ami.tags = [
+        AWSTag.object_with_json(dict(Key="env", Value="dev")),
+        AWSTag.object_with_json(dict(Key="role", Value="nginx")),
+    ]
+
+    # constructing dicts
+    amis_dict = dict()
+    amis_dict[first_ami.id] = first_ami
+    amis_dict[second_ami.id] = second_ami
+    amis_dict[third_ami.id] = third_ami
+
+    parser = parse_args(
+        [
+            '--keep-previous', '0',
+            '--tag', 'role=nginx',
+        ]
+    )
+
+    app = App(parser)
+    # testing filter
+    candidates = app.fetch_candidates(amis_dict)
+
+    candidates_tobedeleted = app.prepare_candidates(candidates)
+    assert len(candidates) == 3
+    assert candidates_tobedeleted == [second_ami, third_ami]
+
+    parser = parse_args(
+        [
+            '--keep-previous', '0',
+            '--tag', 'role=nginx',
+            '--tag', 'env=dev',
+        ]
+    )
+
+    app = App(parser)
+    candidates_tobedeleted2 = app.prepare_candidates(candidates)
+    assert len(candidates) == 3
+    assert candidates_tobedeleted2 == [third_ami]
+
+
 def test_fetch_candidates():
     # creating tests objects
     first_ami = AMI()
@@ -153,7 +272,84 @@ def test_fetch_candidates():
         amis_dict, list(instances_dict)
     )
     assert len(unused_ami_dict) == 1
-    assert amis_dict.get('unused-ami') is not None
+    assert second_ami in unused_ami_dict
+
+
+def test_fetch_candidates_exclude_amis():
+    # creating tests objects
+    first_ami = AMI()
+    first_ami.id = 'ami-28c2b348'
+    first_ami.creation_date = datetime.now()
+
+    first_instance = AWSEC2Instance()
+    first_instance.id = 'i-9f9f6a2a'
+    first_instance.name = "first-instance"
+    first_instance.image_id = first_ami.id
+    first_instance.launch_time = datetime.now()
+
+    second_ami = AMI()
+    second_ami.id = 'excluded-ami'
+    second_ami.creation_date = datetime.now()
+
+    second_instance = AWSEC2Instance()
+    second_instance.id = 'i-9f9f6a2b'
+    second_instance.name = "second-instance"
+    second_instance.image_id = first_ami.id
+    second_instance.launch_time = datetime.now()
+
+    # constructing dicts
+    amis_dict = dict()
+    amis_dict[first_ami.id] = first_ami
+    amis_dict[second_ami.id] = second_ami
+
+    instances_dict = dict()
+    instances_dict[first_instance.image_id] = instances_dict
+    instances_dict[second_instance.image_id] = second_instance
+
+    # testing filter
+    unused_ami_dict = App(parse_args(["--exclude-ami", "excluded-ami"])).fetch_candidates(
+        amis_dict, list(instances_dict)
+    )
+    assert len(unused_ami_dict) == 0
+
+
+def test_fetch_candidates():
+    # creating tests objects
+    first_ami = AMI()
+    first_ami.id = 'ami-28c2b348'
+    first_ami.creation_date = datetime.now()
+
+    first_instance = AWSEC2Instance()
+    first_instance.id = 'i-9f9f6a2a'
+    first_instance.name = "first-instance"
+    first_instance.image_id = first_ami.id
+    first_instance.launch_time = datetime.now()
+
+    second_ami = AMI()
+    second_ami.id = 'unused-ami'
+    second_ami.creation_date = datetime.now()
+
+    second_instance = AWSEC2Instance()
+    second_instance.id = 'i-9f9f6a2b'
+    second_instance.name = "second-instance"
+    second_instance.image_id = first_ami.id
+    second_instance.launch_time = datetime.now()
+
+    # constructing dicts
+    amis_dict = dict()
+    amis_dict[first_ami.id] = first_ami
+    amis_dict[second_ami.id] = second_ami
+
+    instances_dict = dict()
+    instances_dict[first_instance.image_id] = instances_dict
+    instances_dict[second_instance.image_id] = second_instance
+
+    # testing filter
+    unused_ami_dict = App(parse_args([])).fetch_candidates(
+        amis_dict, list(instances_dict)
+    )
+    assert len(unused_ami_dict) == 1
+    assert second_ami in unused_ami_dict
 
 
 def test_parse_args_no_args():
@@ -176,14 +372,24 @@ def test_parse_args():
     parser = parse_args(['--mapping-key', 'name'])
     assert parser is None
 
-    parser = parse_args(['--mapping-key', 'tags',
-                         '--mapping-values', 'group1', 'group2'])
-    assert parser.mapping_key == "tags"
-    assert len(parser.mapping_values) == 2
+    parser = parse_args(['--mapping-key', 'name', '--mapping-values', 'foo'])
+    assert parser.mapping_key == "name"
+    assert len(parser.mapping_values) == 1
 
-    parser = parse_args(['--ami-min-days', '10', '--full-report'])
+    parser = parse_args(['--ami-min-days', '10'])
     assert parser.ami_min_days == 10
-    assert parser.full_report is True
+
+    parser = parse_args(['--name', 'foo'])
+    assert parser.filter_names == ["foo"]
+
+    parser = parse_args(['--name', 'foo', 'bar'])
+    assert parser.filter_names == ["foo", 'bar']
+
+    parser = parse_args(['--tag', 'foo=alpha', '--tag', 'bar=beta'])
+    assert parser.filter_tags == ["foo=alpha", "bar=beta"]
+
+    parser = parse_args(['--exclude-ami', 'foo', 'bar'])
+    assert parser.exclude_amis == ["foo", "bar"]
 
 
 def test_print_report():
@@ -192,9 +398,8 @@ def test_print_report():
     with open("tests/mocks/ami.json") as mock_file:
         json_to_parse = json.load(mock_file)
         ami = AMI.object_with_json(json_to_parse)
-        candidates = {'test': [ami]}
+        candidates = [ami]
         assert Printer.print_report(candidates) is None
-        assert Printer.print_report(candidates, full_report=True) is None
 
 
 def test_print_failed_snapshots():

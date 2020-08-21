@@ -15,32 +15,24 @@ class Printer(object):
 
     """ Pretty table prints methods """
     @staticmethod
-    def print_report(candidates, full_report=False):
+    def print_report(candidates):
 
         """ Print AMI collection results """
 
         if not candidates:
             return
 
-        groups_table = PrettyTable(["Group name", "candidates"])
-
-        for group_name, amis in candidates.items():
-            groups_table.add_row([group_name, len(amis)])
-            eligible_amis_table = PrettyTable(
-                ["AMI ID", "AMI Name", "Creation Date"]
-            )
-            for ami in amis:
-                eligible_amis_table.add_row([
-                    ami.id,
-                    ami.name,
-                    ami.creation_date
-                ])
-            if full_report:
-                print(group_name)
-                print(eligible_amis_table.get_string(sortby="AMI Name"), "\n\n")
-
+        eligible_amis_table = PrettyTable(
+            ["AMI ID", "AMI Name", "Creation Date"]
+        )
+        for ami in candidates:
+            eligible_amis_table.add_row([
+                ami.id,
+                ami.name,
+                ami.creation_date
+            ])
         print("\nAMIs to be removed:")
-        print(groups_table.get_string(sortby="Group name"))
+        print(eligible_amis_table.get_string(sortby="AMI Name"), "\n\n")
 
     @staticmethod
     def print_failed_snapshots(snapshots):
@@ -76,24 +68,33 @@ def parse_args(args):
                         nargs='+',
                         help="AMI id(s) you simply want to remove")
 
+    parser.add_argument("--name",
+                        dest='filter_names',
+                        nargs='+',
+                        help="Names to filter the AMIs on (match ANY name substring): values")
+
+    parser.add_argument("--tag",
+                        dest='filter_tags',
+                        action="append",
+                        help="Tags to filter the AMIs on (match ALL tags exactly): tag=value")
+
     parser.add_argument("--full-report",
-                        dest='full_report',
                         action="store_true",
-                        help="Prints a full report of what to be cleaned")
+                        help="Deprecated (Does nothing)")
 
     parser.add_argument("--mapping-key",
                         dest='mapping_key',
-                        help="How to regroup AMIs : [name|tags]")
+                        help="Deprecated, use --name option instead. Valid option: name")
 
     parser.add_argument("--mapping-values",
                         dest='mapping_values',
                         nargs='+',
-                        help="List of values for tags or name")
+                        help="Deprecated, use --name option instead")
 
-    parser.add_argument("--excluded-mapping-values",
-                        dest='excluded_mapping_values',
+    parser.add_argument("--exclude-ami",
+                        dest='exclude_amis',
                         nargs='+',
-                        help="List of values to be excluded from tags")
+                        help="List of AMI IDs to be excluded")
 
     parser.add_argument("--keep-previous",
                         dest='keep_previous',

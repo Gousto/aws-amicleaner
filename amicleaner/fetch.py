@@ -17,6 +17,7 @@ class Fetcher(object):
 
         """ Initializes aws sdk clients """
 
+        # TODO: Add paginator
         self.ec2 = ec2 or boto3.client('ec2', config=Config(retries={'max_attempts': BOTO3_RETRIES}))
         self.asg = autoscaling or boto3.client('autoscaling')
 

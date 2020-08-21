@@ -10,7 +10,6 @@ import sys
 from amicleaner import __version__
 from .core import AMICleaner, OrphanSnapshotCleaner
 from .fetch import Fetcher
-from .resources.config import MAPPING_KEY, MAPPING_VALUES, EXCLUDED_MAPPING_VALUES
 from .resources.config import TERM
 from .utils import Printer, parse_args
 
@@ -20,21 +19,16 @@ class App(object):
     def __init__(self, args):
 
         self.version = args.version
-        self.mapping_key = args.mapping_key or MAPPING_KEY
-        self.mapping_values = args.mapping_values or MAPPING_VALUES
-        self.excluded_mapping_values = args.excluded_mapping_values or EXCLUDED_MAPPING_VALUES
+        self.filter_names = args.filter_names
+        self.filter_tags = args.filter_tags
+        self.exclude_amis = args.exclude_amis
+        if args.mapping_key == "name" and not self.filter_names:
+            self.filter_names = args.mapping_values
         self.keep_previous = args.keep_previous
         self.check_orphans = args.check_orphans
         self.from_ids = args.from_ids
-        self.full_report = args.full_report
         self.force_delete = args.force_delete
         self.ami_min_days = args.ami_min_days
-
-        self.mapping_strategy = {
-            "key": self.mapping_key,
-            "values": self.mapping_values,
-            "excluded": self.excluded_mapping_values,
-        }
 
     def fetch_candidates(self, available_amis=None, excluded_amis=None):
 
@@ -53,6 +47,10 @@ class App(object):
             excluded_amis += f.fetch_zeroed_asg()
             excluded_amis += f.fetch_instances()
 
+        # Add the user specified list of excluded AMIs
+        if self.exclude_amis:
+            excluded_amis.extend(self.exclude_amis)
+
         candidates = [v
                       for k, v
                       in available_amis.items()
@@ -70,29 +68,12 @@ class App(object):
 
         c = AMICleaner()
 
-        mapped_amis = c.map_candidates(
-            candidates_amis=candidates_amis,
-            mapping_strategy=self.mapping_strategy,
-        )
+        filtered_amis = c.filter_candidates(candidates_amis, filter_names=self.filter_names,
+                                            filter_tags=self.filter_tags)
 
-        if not mapped_amis:
-            return None
+        candidates = c.reduce_candidates(filtered_amis, self.keep_previous, self.ami_min_days)
 
-        candidates = []
-        report = dict()
-
-        for group_name, amis in mapped_amis.items():
-            group_name = group_name or ""
-
-            if not group_name:
-                report["no-tags (excluded)"] = amis
-            else:
-                reduced = c.reduce_candidates(amis, self.keep_previous, self.ami_min_days)
-                if reduced:
-                    report[group_name] = reduced
-                    candidates.extend(reduced)
-
-        Printer.print_report(report, self.full_report)
+        Printer.print_report(candidates)
 
         return candidates
 
@@ -140,9 +121,6 @@ class App(object):
     def print_defaults(self):
 
         print(TERM.bold("\nDefault values : ==>"))
-        print(TERM.green("mapping_key : {0}".format(self.mapping_key)))
-        print(TERM.green("mapping_values : {0}".format(self.mapping_values)))
-        print(TERM.green("excluded_mapping_values : {0}".format(self.excluded_mapping_values)))
         print(TERM.green("keep_previous : {0}".format(self.keep_previous)))
         print(TERM.green("ami_min_days : {0}".format(self.ami_min_days)))
 

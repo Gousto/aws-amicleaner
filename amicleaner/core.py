@@ -151,92 +151,36 @@ class AMICleaner(object):
 
         return self.remove_amis(amis)
 
-    def map_candidates(self, candidates_amis=None, mapping_strategy=None):
+    def filter_candidates(self, candidates_amis, filter_names=None, filter_tags=None):
+        filtered_amis = []
 
-        """
-        Given a dict of AMIs to clean, and a mapping strategy (see config.py),
-        this function returns a dict of grouped amis with the mapping strategy
-        name as a key.
-
-        example :
-        mapping_strategy = {"key": "name", "values": ["ubuntu", "debian"]}
-        or
-        mapping_strategy = {"key": "tags", "values": ["env", "role"], "excluded": ["master", "develop"]}
-
-        print map_candidates(candidates_amis, mapping_strategy)
-        ==>
-        {
-            "ubuntu": [obj1, obj3],
-            "debian": [obj2, obj5]
-        }
-
-        or
-        ==>
-        {
-            "prod.nginx": [obj1, obj3],
-            "prod.tomcat": [obj2, obj5],
-            "test.nginx": [obj6, obj7],
-        }
-        """
-
-        if not candidates_amis:
-            return {}
-
-        mapping_strategy = mapping_strategy or {}
-
-        if not mapping_strategy:
-            return candidates_amis
-
-        candidates_map = dict()
         for ami in candidates_amis:
-            # case : grouping on name
-            if mapping_strategy.get("key") == "name":
-                for mapping_value in mapping_strategy.get("values"):
-                    if mapping_value in ami.name:
-                        mapping_list = candidates_map.get(mapping_value) or []
-                        mapping_list.append(ami)
-                        candidates_map[mapping_value] = mapping_list
-            # case : grouping on tags
-            elif mapping_strategy.get("key") == "tags":
-                mapping_value = self.tags_values_to_string(
-                    ami.tags,
-                    mapping_strategy.get("values")
-                )
-                if mapping_strategy.get("excluded"):
-                    for excluded_mapping_value in mapping_strategy.get("excluded"):
-                        if excluded_mapping_value not in mapping_value:
-                            mapping_list = candidates_map.get(mapping_value) or []
-                            mapping_list.append(ami)
-                            candidates_map[mapping_value] = mapping_list
-                else:
-                    mapping_list = candidates_map.get(mapping_value) or []
-                    mapping_list.append(ami)
-                    candidates_map[mapping_value] = mapping_list
+            matched = True
+            if filter_names:
+                # Must match one of the listed names
+                found = False
+                for name in filter_names:
+                    if name in ami.name:
+                        found = True
+                        break
+                if not found:
+                    matched = False
 
-        return candidates_map
+            if filter_tags:
+                # Must match all tags
+                tags = {t.key: t.value for t in ami.tags}
+                for tag in filter_tags:
+                    key, value = tag.split("=", 1)
+                    # Exact match, excluding any whitespace prefix/suffix
+                    tag = tags.get(key)
+                    if not tag or tag.strip() != value.strip():
+                        matched = False
 
-    @staticmethod
-    def tags_values_to_string(tags, filters=None):
-        """
-        filters tags(key,value) array and return a string with tags values
-        :tags is an array of AWSTag objects
-        """
+            if matched:
+                filtered_amis.append(ami)
 
-        if tags is None:
-            return None
+        return filtered_amis
 
-        tag_values = []
-
-        filters = filters or []
-        filters_to_string = ".".join(filters)
-
-        for tag in tags:
-            if not filters:
-                tag_values.append(tag.value)
-            elif tag.key in filters_to_string:
-                tag_values.append(tag.value)
-
-        return ".".join(sorted(tag_values))
 
     def reduce_candidates(self, mapped_candidates_ami, keep_previous=0, ami_min_days=-1):
 
