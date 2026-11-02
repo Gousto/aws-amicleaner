@@ -1,0 +1,19 @@
+.github/CODEOWNERS
+  s_8e2bbbc0f84a6c::t_50b68cc34bfb0c 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1854f4b66855f0d77d239e4fb3514e5b4557bd4",
+  "prompts": {},
+  "sessions": {
+    "s_8e2bbbc0f84a6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9869fe1f-765c-48dc-a441-d0813cef2fe0",
+        "model": "unknown"
+      },
+      "human_author": "Matt Bell <38588937+bellmatt@users.noreply.github.com>"
+    }
+  }
+}
